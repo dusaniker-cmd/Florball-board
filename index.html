@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Floorball Tactic Board</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1 class="app-title">Floorball Tactic Board</h1>
+    <nav class="app-nav">
+      <a href="#" class="nav-link is-active" data-view="board">Deska</a>
+      <a href="#" class="nav-link" data-view="roster">Sestava</a>
+    </nav>
+    <div class="file-controls">
+      <input type="text" id="scene-name" class="scene-name" placeholder="Název taktiky" title="Název taktiky">
+      <button id="btn-new" title="Nová prázdná taktika">Nová</button>
+      <button id="btn-save" title="Uložit do prohlížeče">Uložit</button>
+      <select id="saved-list" title="Uložené taktiky"></select>
+      <button id="btn-delete-saved" title="Smazat vybranou uloženou taktiku">Smazat</button>
+      <button id="btn-json-download" title="Stáhnout taktiku jako JSON soubor">JSON ↓</button>
+      <button id="btn-json-upload" title="Nahrát taktiku z JSON souboru">JSON ↑</button>
+      <input type="file" id="json-file" accept=".json,application/json" hidden>
+    </div>
+    <span class="hint" id="hint"></span>
+  </header>
+
+  <main class="app-main" id="view-board">
+    <aside class="toolbar" id="toolbar">
+      <button class="tool-btn is-active" data-tool="select" title="Výběr / přesun (Esc)">↖</button>
+      <button class="tool-btn" data-tool="player" title="Hráč">●</button>
+      <button class="tool-btn" data-tool="ball" title="Míček">○</button>
+      <button class="tool-btn" data-tool="arrow" title="Šipka (přihrávka)">→</button>
+      <button class="tool-btn" data-tool="arrow-dashed" title="Přerušovaná šipka (pohyb)">⇢</button>
+      <button class="tool-btn" data-tool="line" title="Čára">─</button>
+      <button class="tool-btn" data-tool="zone" title="Zóna">▭</button>
+      <button class="tool-btn" data-tool="text" title="Text">T</button>
+      <button class="tool-btn" data-tool="pen" title="Volné pero">✎</button>
+
+      <div class="toolbar-sep"></div>
+
+      <div class="team-toggle" title="Tým pro nové hráče a barvu čar">
+        <button class="team-btn team-home is-active" data-team="home" title="Domácí">D</button>
+        <button class="team-btn team-away" data-team="away" title="Hosté">H</button>
+      </div>
+
+      <div class="toolbar-sep"></div>
+
+      <div class="view-toggle" title="Zobrazení u všech hráčů">
+        <button class="view-btn" data-view-toggle="sticks" title="Hole zapnout / vypnout">Hůl</button>
+        <button class="view-btn" data-view-toggle="direction" title="Trojúhelník směru zapnout / vypnout">Směr</button>
+      </div>
+    </aside>
+
+    <section class="board" id="board">
+      <canvas id="board-canvas" aria-label="Taktická deska"></canvas>
+
+      <!-- Vlastnosti vybraného textu -->
+      <div class="props-bar" id="props-bar" hidden>
+        <span class="props-label">Písmo</span>
+        <button id="prop-font-minus" title="Menší písmo (klávesa −)">A−</button>
+        <span class="props-value" id="prop-font-value"></span>
+        <button id="prop-font-plus" title="Větší písmo (klávesa +)">A+</button>
+        <span class="props-sep"></span>
+        <span class="props-label">Šířka</span>
+        <button id="prop-width-minus" title="Užší odstavec (víc řádků)">◂</button>
+        <span class="props-value" id="prop-width-value"></span>
+        <button id="prop-width-plus" title="Širší odstavec (míň řádků)">▸</button>
+        <span class="props-sep"></span>
+        <button id="prop-text-edit" title="Upravit text (také dvojklik)">Upravit text</button>
+      </div>
+    </section>
+
+    <!-- Rychlý výběr ze sestavy: kdo je na hřišti v této fázi, umístění kliknutím -->
+    <aside class="roster-panel" id="roster-panel">
+      <h2 class="roster-panel-title">Rozestavení</h2>
+      <div class="formation-box">
+        <select id="formation-select" title="Vyberte systém"></select>
+        <div class="formation-actions">
+          <button id="btn-formation-home" class="formation-btn team-home" title="Postavit naše hráče (do aktuální fáze)">Naši</button>
+          <button id="btn-formation-away" class="formation-btn team-away" title="Postavit soupeře zrcadlově (do aktuální fáze)">Soupeř</button>
+        </div>
+        <p class="formation-desc" id="formation-desc"></p>
+      </div>
+
+      <h2 class="roster-panel-title">Sestava</h2>
+      <div class="roster-panel-list" id="roster-panel-list"></div>
+      <p class="roster-panel-empty" id="roster-panel-empty" hidden>
+        Sestava je prázdná. Hráče přidáte na stránce <a href="#" data-view="roster" class="nav-link-inline">Sestava</a>.
+      </p>
+      <p class="roster-panel-help">
+        ☑ = na hřišti v této fázi.<br>
+        Klik na jméno = umístit kliknutím / vybrat.
+      </p>
+    </aside>
+  </main>
+
+  <!-- Stránka Sestava: editace seznamu hráčů -->
+  <section class="view-roster" id="view-roster" hidden>
+    <div class="roster-page">
+      <h2>Sestava týmu</h2>
+      <p class="roster-count" id="roster-count"></p>
+      <table class="roster-table">
+        <thead>
+          <tr><th>Číslo</th><th>Jméno</th><th>Pozice</th><th></th></tr>
+        </thead>
+        <tbody id="roster-table-body"></tbody>
+      </table>
+
+      <form class="roster-add" id="roster-add-form">
+        <h3>Přidat hráče</h3>
+        <div class="roster-add-row">
+          <input type="number" id="roster-add-number" min="0" max="99" placeholder="Číslo" class="roster-num">
+          <input type="text" id="roster-add-name" placeholder="Jméno" required>
+          <select id="roster-add-position">
+            <option value="goalie">Brankář</option>
+            <option value="defender">Obránce</option>
+            <option value="forward" selected>Útočník</option>
+          </select>
+          <button type="submit">Přidat</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <footer class="phase-bar" id="phase-bar">
+    <div class="phase-list" id="phase-list"></div>
+    <div class="phase-controls">
+      <label class="duration-field" title="Délka přechodu z této fáze do další">
+        <input type="number" id="phase-duration" min="100" step="100" value="1500"> ms
+      </label>
+      <button id="btn-mirror" title="Zrcadlit celou akci na druhou stranu hřiště (nahoře ↔ dole). Texty a čísla zůstávají čitelné, naše branka zůstává vlevo.">⇅ Zrcadlit</button>
+      <button id="btn-phase-add" title="Přidat fázi (kopie aktuální)">+ Fáze</button>
+      <button id="btn-play" title="Přehrát / pauza (mezerník)">▶</button>
+      <button id="btn-stop" title="Zastavit a vrátit na začátek">■</button>
+      <select id="export-format" class="export-format" title="Formát videa: MP4 pro WhatsApp a telefony, WebM jako záloha"></select>
+      <button id="btn-export" title="Export videa" disabled>Export</button>
+    </div>
+  </footer>
+
+  <!-- Klasické skripty (ne ES moduly), aby appka běžela i z file:// bez serveru.
+       Každý soubor přidává svůj modul do globálního jmenného prostoru window.FB.
+       Pořadí: model → renderer → časová osa → přehrávač → úložiště → export → nástroje → UI → main. -->
+  <script src="js/scene.js"></script>
+  <script src="js/canvas-renderer.js"></script>
+  <script src="js/phases.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/mp4-muxer.js"></script>
+  <script src="js/export-video.js"></script>
+  <script src="js/tools.js"></script>
+  <script src="js/roster.js"></script>
+  <script src="js/formations.js"></script>
+  <script src="js/examples.js"></script>
+  <script src="js/examples/playbook.js"></script>
+  <script src="js/examples/reserse-obrana.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

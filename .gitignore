@@ -1,0 +1,12 @@
+# sestavené výstupy modelu přesilovky (vznikají z sim/ skriptem)
+sim/out/
+# pracovní soubory
+*.mp4
+*.webm
+Thumbs.db
+.DS_Store
+
+# klubové materiály (playbook, rešerše, taktiky proti soupeřům) – nepublikovat,
+# dokud není rozhodnuto o Private/Public; odkomentovat po rozhodnutí
+docs/
+tactics/

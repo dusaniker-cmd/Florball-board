@@ -1,0 +1,537 @@
+<title>Přesilovka 5 na 3</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    --bg: #171c26; --panel: #222938; --line: #35405a; --text: #e9edf4; --muted: #98a4bd;
+    --accent: #f2b73a; --home: #d84a3c; --away: #3d7be0; --ok: #43c46f; --bad: #e0574a;
+    --floor: #dfe6ee; --floorline: #2f5f9e;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "IBM Plex Sans", system-ui, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding-block: 18px 40px; padding-inline: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin-bottom: 12px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--muted); }
+  .board { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  /* plátno drží poměr stran přes obal, ne přes vlastní výšku (některé prohlížeče
+     a hostitelské styly ji jinak srazí) */
+  .court-box { position: relative; width: 100%; aspect-ratio: 1140 / 1100; max-width: 100%; max-height: none !important; overflow: visible; }
+  canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; max-height: none !important; display: block; border-radius: 6px; touch-action: none; cursor: grab; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .legend .home::before { background: var(--home); }
+  .legend .away::before { background: var(--away); }
+  .legend .lane-ok::before { background: var(--ok); border-radius: 2px; height: 3px; }
+  .legend .lane-bad::before { background: var(--bad); border-radius: 2px; height: 3px; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0; }
+  button, select, input[type="text"] {
+    font: inherit; color: var(--text); background: #2c3447; border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { background: #384260; }
+  button.primary { background: var(--accent); color: #1a1400; border-color: transparent; font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { color: var(--muted); font-size: 13px; min-height: 1.4em; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-top: 8px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h2 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .score { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .score b { font: 600 34px/1 "IBM Plex Mono", monospace; color: var(--accent); }
+  .score span { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  td { padding: 6px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+  td.num, th.num { text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  tr.sel td { background: rgba(242,183,58,0.10); }
+  tr[data-carrier] { cursor: pointer; }
+  .notes { color: var(--muted); font-size: 12px; }
+  .bar { height: 6px; border-radius: 3px; background: #2c3447; overflow: hidden; margin-top: 4px; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .help { color: var(--muted); font-size: 12.5px; }
+  .help li { margin: 4px 0; }
+  .saves { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .saves input { flex: 1; min-width: 160px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #2c3447; color: var(--muted); }
+  progress { width: 140px; height: 8px; accent-color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Přesilovka 5 na 3</h1>
+    <p>Geometrický model: přetáhněte hráče, čísla se přepočítají hned. Útočíme na branku vpravo.</p>
+  </header>
+
+  <div class="board">
+    <div class="court-box">
+      <canvas id="court" width="1140" height="1100" aria-label="Útočná polovina hřiště s hráči"></canvas>
+    </div>
+    <div class="legend">
+      <span class="home">útočníci 1–5 (klik = míček u něj)</span>
+      <span class="away">obránci A–C (posunutí k míčku se kreslí světleji)</span>
+      <span class="lane-ok">otevřená přihrávka / střela</span>
+      <span class="lane-bad">v dráze hůl / blok</span>
+      <span id="diag" style="margin-left:auto;opacity:0.7"></span>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <select id="preset" title="Výchozí rozestavení"></select>
+    <button id="btn-load">Načíst</button>
+    <button id="btn-def">Nejlepší obrana</button>
+    <button id="btn-att" class="primary">Nejlepší útok</button>
+    <progress id="prog" value="0" max="1" hidden></progress>
+    <button id="btn-mirror">⇅ Zrcadlit</button>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Hodnota rozestavení</h2>
+      <div class="score"><b id="score">0.000</b><span>průměr nejlepší akce přes všechny držitele míčku (≈ pravděpodobnost gólu z jedné kombinace)</span></div>
+      <table>
+        <thead><tr><th>Míček u</th><th>Nejlepší akce</th><th class="num">Hodnota</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Uložit pro Clauda</h2>
+      <div class="saves">
+        <input type="text" id="save-name" placeholder="Název (např. Můj útok 1)">
+        <button id="btn-save" class="primary">Uložit</button>
+      </div>
+      <p class="status" id="save-status">Uložené rozestavení si Claude přečte a může s ním dál počítat.</p>
+      <div class="saves" id="db-row" style="margin-top:6px">
+        <select id="saved-list" title="Uložená rozestavení"></select>
+        <button id="btn-load-saved">Otevřít</button>
+      </div>
+      <div class="saves" id="file-row" style="margin-top:6px" hidden>
+        <button id="btn-file-save">Stáhnout JSON</button>
+        <button id="btn-file-load">Nahrát JSON</button>
+        <input type="file" id="file-input" accept=".json,application/json" hidden>
+      </div>
+      <h2 style="margin-top:16px">Co model počítá</h2>
+      <ul class="help">
+        <li><b>Střela:</b> úhel na branku × otevřenost brankáře (usazený brankář nechá ~35 %). Blok obránce v dráze ×0,15, každý obránce do 1,6 m ×0,5.</li>
+        <li><b>Přihrávka:</b> hůl obránce do 1,1 m od dráhy → projde 25 %, jinak 92 %; přes 12 m ×0,85. Střela z první ×1,25, po krosu se brankář musí přesunout (plná hodnota při 60°).</li>
+        <li><b>Obrana</b> se vždy stáhne k míčku (35 % vzdálenosti, max 2,2 m); během přihrávky se posune jen o rychlost × čas.</li>
+        <li><b>Nezná:</b> pohyb útočníků, clony, dorážky, kvalitu hráčů. Je to průhledná geometrie, ne zápas.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+/*__MODEL__*/
+</script>
+<script>
+(function () {
+  'use strict';
+  const M = window.PowerPlayModel;
+  const canvas = document.getElementById('court');
+  const ctx = canvas.getContext('2d');
+
+  // Výška plátna se počítá skriptem podle výřezu hřiště, aby ji nemohl srazit žádný
+  // cizí styl hostitelské stránky; zapisuje se s !important.
+  const courtBox = canvas.parentElement;
+  function fitCanvas() {
+    const boxW = courtBox.clientWidth || courtBox.getBoundingClientRect().width;
+    if (!boxW) return;
+    const ratio = (VIEW.y2 - VIEW.y1) / (VIEW.x2 - VIEW.x1);   // výřez 22,8 × 22 m
+    let w = boxW, h = Math.round(w * ratio);
+    // v nízkém okně plátno zmenšit celé (nikdy neuříznout): max 72 % výšky okna
+    const maxH = Math.max(280, Math.round(window.innerHeight * 0.8));
+    if (h > maxH) { h = maxH; w = Math.round(h / ratio); }
+    courtBox.style.setProperty('height', h + 'px', 'important');
+    canvas.style.setProperty('height', h + 'px', 'important');
+    canvas.style.setProperty('width', w + 'px', 'important');
+    canvas.style.setProperty('left', Math.round((boxW - w) / 2) + 'px', 'important');
+    // bitmapa plátna ve stejném poměru jako jeho CSS box, ostrá na HiDPI
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+    SCALE = canvas.width / (VIEW.x2 - VIEW.x1);
+    const diag = document.getElementById('diag');
+    if (diag) diag.textContent = 'plátno ' + w + '×' + h + ' px (bitmapa ' + bw + '×' + bh + '), okno ' + window.innerWidth + '×' + window.innerHeight + ' px';
+    if (ready) render();
+  }
+
+  // Zobrazená část hřiště: x 18–40 m, y 0–20 m, okraj 1 m
+  const VIEW = { x1: 18, x2: 40.8, y1: -1, y2: 21 };
+  let SCALE = canvas.width / (VIEW.x2 - VIEW.x1);
+  let ready = false;
+
+  // až po deklaraci VIEW/SCALE (jinak by fitCanvas sáhl na neinicializované proměnné)
+  fitCanvas();
+  window.addEventListener('resize', fitCanvas);
+  if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(courtBox.parentElement);
+  window.addEventListener('load', fitCanvas);
+  function toPx(p) { return { x: (p.x - VIEW.x1) * SCALE, y: (p.y - VIEW.y1) * SCALE }; }
+  function toCourt(px, py) { return { x: px / SCALE + VIEW.x1, y: py / SCALE + VIEW.y1 }; }
+
+  const PRESETS = {
+    'Deštník 1-3-1': { attackers: [{ x: 25, y: 10 }, { x: 30.5, y: 4.5 }, { x: 30.5, y: 15.5 }, { x: 33.5, y: 10 }, { x: 36, y: 13.5 }] },
+    'Box + point (2-1-2)': { attackers: [{ x: 25.5, y: 10 }, { x: 30, y: 5 }, { x: 30, y: 15 }, { x: 35.5, y: 6.5 }, { x: 35.5, y: 13.5 }] },
+    'Playbook TKS (point, 2 krajní, 2 spodní)': { attackers: [{ x: 21.5, y: 9.6 }, { x: 27, y: 3.6 }, { x: 27, y: 15.3 }, { x: 30, y: 9.6 }, { x: 33.7, y: 15.7 }] },
+    'Dva u branky + tři nahoře (2-3)': { attackers: [{ x: 27, y: 4 }, { x: 26, y: 10 }, { x: 27, y: 16 }, { x: 35.5, y: 7 }, { x: 35.5, y: 13 }] },
+  };
+  const TRIANGLE_12 = [{ x: 31.5, y: 10 }, { x: 34.5, y: 7.2 }, { x: 34.5, y: 12.8 }];
+  const TRIANGLE_21 = [{ x: 33, y: 7.5 }, { x: 33, y: 12.5 }, { x: 35.3, y: 10 }];
+
+  const state = {
+    attackers: PRESETS['Deštník 1-3-1'].attackers.map(function (p) { return { x: p.x, y: p.y }; }),
+    defenders: TRIANGLE_12.map(function (p) { return { x: p.x, y: p.y }; }),
+    carrier: 0,
+    eval: null,
+    drag: null,
+    busy: false,
+  };
+
+  // ------------------------------------------------------------- kreslení
+  function drawCourt() {
+    const G = M.GOAL;
+    ctx.fillStyle = '#171c26';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // plocha (jen pravá polovina + zaoblené rohy vpravo)
+    const r = 2.85 * SCALE;
+    const a = toPx({ x: VIEW.x1, y: 0 }), b = toPx({ x: 40, y: 20 });
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x - r, a.y); ctx.arcTo(b.x, a.y, b.x, a.y + r, r);
+    ctx.lineTo(b.x, b.y - r); ctx.arcTo(b.x, b.y, b.x - r, b.y, r);
+    ctx.lineTo(a.x, b.y); ctx.closePath();
+    ctx.fillStyle = '#dfe6ee'; ctx.fill();
+    ctx.lineWidth = 0.25 * SCALE; ctx.strokeStyle = '#2b3646'; ctx.stroke();
+
+    ctx.strokeStyle = '#2f5f9e'; ctx.fillStyle = '#2f5f9e'; ctx.lineWidth = 0.08 * SCALE;
+    // středová čára
+    const m1 = toPx({ x: 20, y: 0 }), m2 = toPx({ x: 20, y: 20 });
+    ctx.beginPath(); ctx.moveTo(m1.x, m1.y); ctx.lineTo(m2.x, m2.y); ctx.stroke();
+    // body na vhazování
+    [{ x: 20, y: 1.5 }, { x: 20, y: 18.5 }, { x: 36.5, y: 1.5 }, { x: 36.5, y: 18.5 }, { x: 20, y: 10 }].forEach(function (p) {
+      const q = toPx(p); ctx.beginPath(); ctx.arc(q.x, q.y, 0.2 * SCALE, 0, Math.PI * 2); ctx.fill();
+    });
+    // brankoviště, brankářský prostor, branková čára, branka
+    function rect(rc) { const p = toPx({ x: rc.x1, y: rc.y1 }); ctx.strokeRect(p.x, p.y, (rc.x2 - rc.x1) * SCALE, (rc.y2 - rc.y1) * SCALE); }
+    rect(G.crease); rect(G.keeper);
+    const g1 = toPx({ x: G.lineX, y: G.cy - 2.5 }), g2 = toPx({ x: G.lineX, y: G.cy + 2.5 });
+    ctx.beginPath(); ctx.moveTo(g1.x, g1.y); ctx.lineTo(g2.x, g2.y); ctx.stroke();
+    ctx.save(); ctx.strokeStyle = '#1b2a3a'; ctx.lineWidth = 0.12 * SCALE;
+    const p1 = toPx({ x: G.lineX, y: G.cy - G.halfWidth }), p2 = toPx({ x: G.lineX + G.depth, y: G.cy + G.halfWidth });
+    ctx.strokeRect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+    ctx.restore();
+    // brankář (jen pro orientaci)
+    const gk = toPx({ x: G.lineX - 0.7, y: G.cy });
+    ctx.beginPath(); ctx.arc(gk.x, gk.y, 0.55 * SCALE, 0, Math.PI * 2);
+    ctx.fillStyle = '#6b7280'; ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = '600 ' + (0.6 * SCALE) + 'px IBM Plex Sans, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('G', gk.x, gk.y);
+  }
+
+  function drawLine(a, b, color, width, dash) {
+    const p = toPx(a), q = toPx(b);
+    ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width * SCALE; ctx.setLineDash(dash || []);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); ctx.restore();
+  }
+
+  function drawPlayer(p, color, label, radius, alpha) {
+    const q = toPx(p);
+    ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.beginPath(); ctx.arc(q.x, q.y, radius * SCALE, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill(); ctx.lineWidth = 0.1 * SCALE; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '700 ' + (radius * 1.1 * SCALE) + 'px IBM Plex Sans, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(label, q.x, q.y + radius * 0.05 * SCALE);
+    ctx.restore();
+  }
+
+  function render() {
+    drawCourt();
+    const ev = state.eval;
+    const c = state.attackers[state.carrier];
+    const carrier = ev && ev.carriers[state.carrier];
+    const gc = { x: M.GOAL.lineX, y: M.GOAL.cy };
+
+    if (carrier) {
+      const def = carrier.options[0].defenders;
+      // dráhy z držitele: přihrávky a jeho střela
+      carrier.options.forEach(function (o) {
+        if (o.type !== 'pass') return;
+        const ok = o.passP > 0.5;
+        drawLine(c, state.attackers[o.to], ok ? 'rgba(67,196,111,0.85)' : 'rgba(224,87,74,0.85)', 0.08, [0.4 * SCALE, 0.25 * SCALE]);
+      });
+      // nejlepší akce tučně
+      const b = carrier.best;
+      for (let i = 0; i < b.path.length - 1; i++) {
+        drawLine(state.attackers[b.path[i]], state.attackers[b.path[i + 1]], '#f2b73a', 0.16);
+      }
+      const shooter = state.attackers[b.path[b.path.length - 1]];
+      const blocked = b.notes.indexOf('střela v bloku') !== -1;
+      drawLine(shooter, gc, blocked ? 'rgba(224,87,74,0.9)' : 'rgba(67,196,111,0.9)', 0.12);
+      // posunutí obránci
+      const shifted = b.defenders || def;
+      shifted.forEach(function (d, i) { drawPlayer(d, '#3d7be0', 'ABC'[i], 0.7, 0.45); });
+    }
+
+    state.defenders.forEach(function (d, i) { drawPlayer(d, '#3d7be0', 'ABC'[i], 0.75); });
+    state.attackers.forEach(function (a, i) { drawPlayer(a, '#d84a3c', String(i + 1), 0.8); });
+    // míček
+    const ball = toPx({ x: c.x + 0.9, y: c.y + 0.3 });
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, 0.3 * SCALE, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 0.05 * SCALE; ctx.strokeStyle = '#222'; ctx.stroke();
+  }
+
+  // --------------------------------------------------------------- tabulka
+  function describe(b) {
+    if (b.type === 'shot') return 'střela';
+    const path = b.path.map(function (i) { return i + 1; }).join(' → ');
+    return 'přihrávka ' + path + ' (' + Math.round(b.passP * 100) + ' %) a střela z první';
+  }
+
+  function updateTable() {
+    const ev = M.evaluate(state.attackers, state.defenders);
+    state.eval = ev;
+    document.getElementById('score').textContent = ev.score.toFixed(3);
+    const rows = document.getElementById('rows');
+    rows.innerHTML = '';
+    const max = Math.max(0.05, Math.max.apply(null, ev.carriers.map(function (c) { return c.best.value; })));
+    ev.carriers.forEach(function (c) {
+      const tr = document.createElement('tr');
+      tr.dataset.carrier = c.index;
+      if (c.index === state.carrier) tr.className = 'sel';
+      tr.innerHTML = '<td><b>' + (c.index + 1) + '</b></td>'
+        + '<td>' + describe(c.best) + (c.best.notes.length ? '<div class="notes">' + c.best.notes.join(' · ') + '</div>' : '')
+        + '<div class="bar"><i style="width:' + Math.round(100 * c.best.value / max) + '%"></i></div></td>'
+        + '<td class="num">' + c.best.value.toFixed(3) + '</td>';
+      tr.addEventListener('click', function () { state.carrier = c.index; updateTable(); });
+      rows.appendChild(tr);
+    });
+    render();
+  }
+
+  // ------------------------------------------------------------ přetahování
+  function hit(px, py) {
+    const p = toCourt(px, py);
+    let best = null, bd = 1.1;
+    state.attackers.forEach(function (a, i) { const d = M.dist(p, a); if (d < bd) { bd = d; best = { kind: 'a', i: i }; } });
+    state.defenders.forEach(function (d0, i) { const d = M.dist(p, d0); if (d < bd) { bd = d; best = { kind: 'd', i: i }; } });
+    return best;
+  }
+  function pointerPos(ev) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (ev.clientX - r.left) * canvas.width / r.width, y: (ev.clientY - r.top) * canvas.height / r.height };
+  }
+  canvas.addEventListener('pointerdown', function (ev) {
+    if (state.busy) return;
+    const pp = pointerPos(ev);
+    const h = hit(pp.x, pp.y);
+    if (!h) return;
+    canvas.setPointerCapture(ev.pointerId);
+    state.drag = { h: h, moved: false };
+    if (h.kind === 'a') { state.carrier = h.i; updateTable(); }
+  });
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!state.drag) return;
+    const pp = pointerPos(ev);
+    const p = toCourt(pp.x, pp.y);
+    const list = state.drag.h.kind === 'a' ? state.attackers : state.defenders;
+    const bounds = state.drag.h.kind === 'a' ? M.ATT_BOUNDS : M.DEF_BOUNDS;
+    list[state.drag.h.i] = {
+      x: Math.max(bounds.x1, Math.min(bounds.x2, p.x)),
+      y: Math.max(bounds.y1, Math.min(bounds.y2, p.y)),
+    };
+    state.drag.moved = true;
+    updateTable();
+  });
+  function endDrag(ev) {
+    if (!state.drag) return;
+    try { canvas.releasePointerCapture(ev.pointerId); } catch (e) { /* nic */ }
+    state.drag = null;
+    updateTable();
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // ------------------------------------------------------------- ovládání
+  const presetSel = document.getElementById('preset');
+  Object.keys(PRESETS).forEach(function (name) {
+    const o = document.createElement('option'); o.value = name; o.textContent = name; presetSel.appendChild(o);
+  });
+  ['Obrana: trojúhelník 1-2 (jeden u branky, dva výš)', 'Obrana: trojúhelník 2-1 (dva u branky, jeden výš)'].forEach(function (name, i) {
+    const o = document.createElement('option'); o.value = 'def' + i; o.textContent = name; presetSel.appendChild(o);
+  });
+  document.getElementById('btn-load').addEventListener('click', function () {
+    const v = presetSel.value;
+    if (v === 'def0') state.defenders = TRIANGLE_12.map(function (p) { return { x: p.x, y: p.y }; });
+    else if (v === 'def1') state.defenders = TRIANGLE_21.map(function (p) { return { x: p.x, y: p.y }; });
+    else state.attackers = PRESETS[v].attackers.map(function (p) { return { x: p.x, y: p.y }; });
+    setStatus('Načteno: ' + presetSel.options[presetSel.selectedIndex].textContent);
+    updateTable();
+  });
+
+  document.getElementById('btn-mirror').addEventListener('click', function () {
+    state.attackers = state.attackers.map(function (p) { return { x: p.x, y: 20 - p.y }; });
+    state.defenders = state.defenders.map(function (p) { return { x: p.x, y: 20 - p.y }; });
+    updateTable();
+  });
+
+  function setStatus(t) { document.getElementById('status').textContent = t; }
+  function setBusy(b) {
+    state.busy = b;
+    ['btn-load', 'btn-def', 'btn-att', 'btn-mirror', 'btn-save', 'btn-load-saved'].forEach(function (id) { document.getElementById(id).disabled = b; });
+    document.getElementById('prog').hidden = !b;
+  }
+
+  document.getElementById('btn-def').addEventListener('click', function () {
+    setBusy(true); setStatus('Hledám nejlepší obranu proti tomuto útoku…');
+    setTimeout(function () {
+      const res = M.bestDefense(state.attackers, state.defenders, 2500, M.makeRng(Date.now() & 0xffff));
+      state.defenders = res.defenders;
+      setBusy(false); setStatus('Obrana upravena, hodnota rozestavení ' + res.score.toFixed(3));
+      updateTable();
+    }, 20);
+  });
+
+  document.getElementById('btn-att').addEventListener('click', function () {
+    setBusy(true); setStatus('Hledám nejlepší útok proti nejlepší obraně (chvíli to trvá)…');
+    const prog = document.getElementById('prog');
+    const rng = M.makeRng(Date.now() & 0xffff);
+    let cur = state.attackers.map(function (p) { return { x: p.x, y: p.y }; });
+    let curDef = M.bestDefense(cur, state.defenders, 300, rng);
+    let curScore = curDef.score, step = 3, i = 0, total = 360;
+    (function chunk() {
+      const end = Math.min(total, i + 12);
+      for (; i < end; i++) {
+        const k = Math.floor(rng() * 5);
+        const cand = cur.map(function (p) { return { x: p.x, y: p.y }; });
+        cand[k] = { x: cur[k].x + (rng() * 2 - 1) * step, y: cur[k].y + (rng() * 2 - 1) * step };
+        if (!M.validAttacker(cand[k], cand, k)) continue;
+        const def = M.bestDefense(cand, curDef.defenders, 120, rng);
+        if (def.score > curScore) { cur = cand; curDef = def; curScore = def.score; }
+        if (i % 50 === 49) step = Math.max(0.5, step * 0.9);
+      }
+      prog.value = i / total;
+      if (i < total) { setTimeout(chunk, 0); return; }
+      state.attackers = cur; state.defenders = curDef.defenders;
+      setBusy(false); setStatus('Hotovo: útok ' + curScore.toFixed(3) + ' proti nejlepší obraně. Je to lokální optimum, zkuste i jiný start.');
+      updateTable();
+    })();
+  });
+
+  // ------------------------------------------------------------ ukládání
+  let db = null;
+  const savedSel = document.getElementById('saved-list');
+  const saveStatus = document.getElementById('save-status');
+
+  function slug(name) {
+    return (name || 'rozestaveni').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 60) || 'rozestaveni';
+  }
+
+  async function refreshSaved() {
+    if (!db) return;
+    try {
+      const snap = await db.collection('setups').orderBy('savedAt', 'desc').limit(50).get();
+      savedSel.innerHTML = '';
+      if (snap.empty) { const o = document.createElement('option'); o.value = ''; o.textContent = 'Nic uloženého'; savedSel.appendChild(o); return; }
+      snap.docs.forEach(function (d) {
+        const data = d.data();
+        const o = document.createElement('option');
+        o.value = d.id;
+        o.textContent = (data.name || d.id) + (data.author === 'claude' ? ' · návrh Clauda' : '') + (typeof data.score === 'number' ? ' (' + data.score.toFixed(3) + ')' : '');
+        savedSel.appendChild(o);
+      });
+    } catch (e) { saveStatus.textContent = 'Seznam uložených se nepodařilo načíst.'; }
+  }
+
+  document.getElementById('btn-save').addEventListener('click', async function () {
+    const name = document.getElementById('save-name').value.trim() || ('Rozestavení ' + new Date().toLocaleString('cs-CZ'));
+    if (!db) { saveStatus.textContent = 'Ukládání tu není dostupné (otevřete stránku v claude.ai).'; return; }
+    const body = {
+      name: name, author: 'coach', savedAt: new Date().toISOString(),
+      attackers: state.attackers, defenders: state.defenders, carrier: state.carrier,
+      score: state.eval ? state.eval.score : null,
+    };
+    try {
+      await db.doc('setups/' + slug(name)).set(body);
+      await db.doc('setups/current').set(body);
+      saveStatus.textContent = 'Uloženo: ' + name + '. Claude to teď může načíst.';
+      refreshSaved();
+    } catch (e) {
+      saveStatus.textContent = 'Uložení selhalo (' + (e && e.code ? e.code : 'chyba') + ').';
+    }
+  });
+
+  document.getElementById('btn-load-saved').addEventListener('click', async function () {
+    if (!db || !savedSel.value) return;
+    try {
+      const snap = await db.doc('setups/' + savedSel.value).get();
+      if (!snap.exists) { saveStatus.textContent = 'Rozestavení už neexistuje.'; refreshSaved(); return; }
+      const d = snap.data();
+      if (Array.isArray(d.attackers) && d.attackers.length === 5) state.attackers = d.attackers.map(function (p) { return { x: +p.x, y: +p.y }; });
+      if (Array.isArray(d.defenders) && d.defenders.length === 3) state.defenders = d.defenders.map(function (p) { return { x: +p.x, y: +p.y }; });
+      if (typeof d.carrier === 'number') state.carrier = Math.max(0, Math.min(4, d.carrier));
+      document.getElementById('save-name').value = d.name || '';
+      saveStatus.textContent = 'Otevřeno: ' + (d.name || savedSel.value) + (d.note ? ' — ' + d.note : '');
+      updateTable();
+    } catch (e) { saveStatus.textContent = 'Otevření selhalo.'; }
+  });
+
+  // ---- souborové ukládání (lokální otevření bez claude.ai) ----
+  function setupBody() {
+    return {
+      name: document.getElementById('save-name').value.trim() || ('Rozestavení ' + new Date().toLocaleString('cs-CZ')),
+      author: 'coach', savedAt: new Date().toISOString(),
+      attackers: state.attackers, defenders: state.defenders, carrier: state.carrier,
+      score: state.eval ? state.eval.score : null,
+    };
+  }
+  function applyBody(d, label) {
+    if (Array.isArray(d.attackers) && d.attackers.length === 5) state.attackers = d.attackers.map(function (p) { return { x: +p.x, y: +p.y }; });
+    if (Array.isArray(d.defenders) && d.defenders.length === 3) state.defenders = d.defenders.map(function (p) { return { x: +p.x, y: +p.y }; });
+    if (typeof d.carrier === 'number') state.carrier = Math.max(0, Math.min(4, d.carrier));
+    document.getElementById('save-name').value = d.name || '';
+    saveStatus.textContent = 'Otevřeno: ' + (d.name || label) + (d.note ? ' — ' + d.note : '');
+    updateTable();
+  }
+  document.getElementById('btn-file-save').addEventListener('click', function () {
+    const body = setupBody();
+    const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'presilovka-' + slug(body.name) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+    saveStatus.textContent = 'Staženo: ' + a.download + '. Uložte ho do složky projektu tactics/ a řekněte Claudovi.';
+  });
+  document.getElementById('btn-file-load').addEventListener('click', function () { document.getElementById('file-input').click(); });
+  document.getElementById('file-input').addEventListener('change', function (ev) {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    file.text().then(function (t) { applyBody(JSON.parse(t), file.name); }).catch(function () { saveStatus.textContent = 'Soubor se nepodařilo přečíst.'; });
+    ev.target.value = '';
+  });
+  function useFileMode(msg) {
+    document.getElementById('db-row').hidden = true;
+    document.getElementById('file-row').hidden = false;
+    document.getElementById('btn-save').hidden = true;
+    saveStatus.textContent = msg;
+  }
+
+  updateTable();
+  ready = true;
+  fitCanvas();
+
+  if (window.claude && window.claude.use) {
+    window.claude.use('db').then(function (ns) {
+      db = ns;
+      if (!db) { useFileMode('Ukládání do databáze tu není, použijte JSON soubor.'); return; }
+      refreshSaved();
+    });
+  } else {
+    useFileMode('Lokální verze: pozice se ukládají do JSON souboru (Stáhnout JSON), zpět je načte Nahrát JSON.');
+  }
+})();
+</script>
