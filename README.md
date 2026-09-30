@@ -8,7 +8,8 @@ Webová aplikace pro kreslení a animaci florbalových taktik. Čisté HTML, CSS
 - Fáze (keyframes) a plynulé přehrávání s interpolací pozic i natočení hráčů
 - Export videa do MP4 (H.264, vhodné pro WhatsApp) nebo WebM přímo v prohlížeči
 - Sestava hráčů, umístění hráče ze sestavy kliknutím, rozestavení jedním klikem (safety, hrot, W, útoky, přesilovka, oslabení)
-- Zrcadlení celé akce na druhou stranu hřiště, přepínače holí a směru hráčů
+- Zrcadlení celé akce na druhou stranu hřiště, přepínače holí, směru hráčů a šipek pohybu
+- Dráhy pohybu: šipky z aktuální fáze do další, u vybraného hráče jde dráhu ohnout tažením za kolečko uprostřed šipky; hráč pak při přehrávání běží po oblouku
 - Ukládání do prohlížeče, export a import JSON
 - `sim/presilovka.html`: geometrický model přesilovky 5 na 3 (hodnota rozestavení, nejlepší obrana a útok)
 

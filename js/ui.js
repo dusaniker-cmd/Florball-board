@@ -344,7 +344,7 @@
       else if (playing) el.hint.textContent = 'Přehrávání… (mezerník = pauza)';
       else if (state.pendingPlayerId) el.hint.textContent = 'Klikněte na hřiště, kam hráče postavit (Esc = zrušit)';
       else if (rosterView) el.hint.textContent = 'Změny se ukládají hned. Zpět na desku přes „Deska“.';
-      else el.hint.textContent = 'Dvojklik na hráče = popisek · tažení za trojúhelník = otočení · Delete = smazat z fáze · Shift+Delete = ze všech fází · Esc = výběr';
+      else el.hint.textContent = 'Dvojklik na hráče = popisek · tažení za trojúhelník = otočení · tažení za kolečko uprostřed šipky = ohnutí dráhy · Delete = smazat z fáze · Shift+Delete = ze všech fází · Esc = výběr';
     }
 
     /** Dočasný text v nápovědě (průběh exportu, "uloženo"); zmizí při dalším update(). */

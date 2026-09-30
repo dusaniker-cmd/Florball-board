@@ -61,6 +61,13 @@
     if (typeof a.rotation === 'number' && typeof b.rotation === 'number') {
       out.rotation = lerpAngle(a.rotation, b.rotation, t);
     }
+    // Ohnutá dráha: hráč nebo míček nejde po přímce, ale po oblouku přes `bend`
+    if (a.bend && typeof a.x === 'number' && typeof b.x === 'number') {
+      const p = FB.scene.routePoint(a, b, t);
+      out.x = p.x;
+      out.y = p.y;
+    }
+    delete out.bend;
     if (a.points || b.points) {
       out.points = lerpPoints(a.points, b.points, t);
     }

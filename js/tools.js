@@ -20,6 +20,8 @@
   const MIN_DRAG = 0.5;        // metry — kratší tah šipky/čáry se zahodí
   const PEN_STEP = 0.15;       // minimální vzdálenost mezi body pera
   const ROTATE_GRIP = 0.6;     // metry — dosah úchytu natočení u vybraného hráče
+  const BEND_GRIP = 0.8;       // metry — dosah úchytu ohnutí dráhy pohybu
+  const BEND_SNAP = 0.35;      // metry — blíž než tohle k přímce se dráha narovná
 
   const CURSORS = {
     select: 'default',
@@ -187,6 +189,18 @@
             app.render();
             break;
           }
+          // Úchyt dráhy: u vybraného hráče/míčku lze chytit kolečko uprostřed
+          // šipky pohybu do další fáze a dráhu ohnout
+          if (sel && app.view.paths) {
+            const next = app.nextObject(sel);
+            if (next && (sel.type === T.PLAYER || sel.type === T.BALL) &&
+                S.moveDistance(sel, next) >= S.MIN_MOVE &&
+                dist(p, S.routeMid(sel, next)) <= BEND_GRIP) {
+              this.drag = { kind: 'bend', obj: sel, next: next };
+              app.render();
+              break;
+            }
+          }
           const hit = this.hitTest(phase.objects, p);
           state.selectedIds = hit ? [hit.id] : [];
           this.drag = hit ? { kind: 'move', obj: hit, last: p, moved: false } : null;
@@ -274,6 +288,14 @@
           d.last = p;
           d.moved = true;
           break;
+        case 'bend': {
+          // Chycený bod je bod, kterým dráha prochází v polovině cesty. Blízko
+          // přímky se ohnutí zruší (dráha se narovná).
+          const mid = { x: (d.obj.x + d.next.x) / 2, y: (d.obj.y + d.next.y) / 2 };
+          if (dist(p, mid) <= BEND_SNAP) delete d.obj.bend;
+          else d.obj.bend = { x: Math.round(p.x * 100) / 100, y: Math.round(p.y * 100) / 100 };
+          break;
+        }
         case 'rotate': {
           let deg = (Math.atan2(p.y - d.obj.y, p.x - d.obj.x) * 180) / Math.PI;
           if (ev.shiftKey) deg = Math.round(deg / 15) * 15;   // Shift = krok 15°

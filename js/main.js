@@ -75,7 +75,7 @@
     const boardEl = doc.getElementById('board');
     // Zobrazovací volby (směr, hole) — uložené v prohlížeči
     const prefs = FB.storage.loadPrefs();
-    const view = Object.assign({ direction: false, sticks: true }, prefs.view || {});
+    const view = Object.assign({ direction: false, sticks: true, paths: true }, prefs.view || {});
     const renderer = new FB.CanvasRenderer(canvas, { view: view });
 
     // Rozpracovaná práce z minula, jinak ukázka
@@ -134,14 +134,30 @@
         return !!(app.player && app.player.playing);
       },
 
-      /** Vykreslí zadané objekty, nebo aktuální fázi. */
-      render: function (objects) {
+      /**
+       * Vykreslí zadané objekty, nebo aktuální fázi. `transition` je index fáze,
+       * ze které se právě přechází (pro šipky pohybu); při přehrávání se zjistí sám.
+       */
+      render: function (objects, transition) {
         const phase = app.currentPhase();
+        let idx = transition;
+        if (typeof idx !== 'number') {
+          idx = app.isPlaying() ? app.player.stateAt(app.player.time).phaseIndex : app.state.phaseIndex;
+        }
+        const from = S.getPhase(app.scene, idx);
+        const to = S.getPhase(app.scene, idx + 1);
         renderer.render(objects || (phase ? phase.objects : []), {
           labelFor: function (obj) { return S.resolvePlayerLabel(app.scene, obj); },
           selectedIds: app.isPlaying() ? [] : app.state.selectedIds,
+          movement: from && to ? { from: from.objects, to: to.objects } : null,
         });
         if (app.ui) app.ui.updateProps();   // výběr se mění i bez changed()
+      },
+
+      /** Táž postava/míček v další fázi (cíl pohybu), nebo null u poslední fáze. */
+      nextObject: function (obj) {
+        const next = S.getPhase(app.scene, app.state.phaseIndex + 1);
+        return next ? S.findObject(next, obj.id) : null;
       },
 
       /** Jediný vybraný objekt aktuální fáze, nebo null. */
@@ -424,7 +440,7 @@
     app.player = new FB.Player({
       getScene: function () { return app.scene; },
       onFrame: function (state) {
-        app.render(state.objects);
+        app.render(state.objects, state.phaseIndex);
         if (app.ui) app.ui.setPlayhead(state.phaseIndex);
       },
       onEnd: function () {

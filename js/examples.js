@@ -79,6 +79,14 @@
       if (ph.ball) {
         objects.push(S.createObject(S.OBJECT_TYPES.BALL, { id: 'ball', x: ph.ball[0], y: ph.ball[1] }));
       }
+      // Ohnuté dráhy do další fáze: bend: { h3: [x, y], a1: [x, y], ball: [x, y] }.
+      // Bod, kterým dráha prochází v polovině cesty (viz scene.routePoint).
+      if (ph.bend) {
+        Object.keys(ph.bend).forEach(function (key) {
+          const o = objects.find(function (x) { return x.id === key; });
+          if (o) o.bend = { x: ph.bend[key][0], y: ph.bend[key][1] };
+        });
+      }
       if (ph.note) {
         objects.push(S.createObject(S.OBJECT_TYPES.TEXT, {
           id: 'note', x: 20, y: -1.25, text: ph.note, fontSize: 0.7, maxWidth: 38, color: '#e6e9ef',

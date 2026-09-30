@@ -83,6 +83,8 @@
           home: { 1: [34, 10], 2: [22.5, 10], 3: [13.5, 1.5], 4: [9, 10], 5: [13, 18.5] },
           away: AWAY_SAFETY,
           ball: [14.3, 2],
+          // oblouky: 3 se rozbíhá obloukem do středu, 4 ho kříží
+          bend: { h3: [17.8, 4.2], h4: [10.6, 5.4] },
         },
         {
           name: 'Rozběh',

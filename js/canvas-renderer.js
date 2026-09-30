@@ -95,7 +95,7 @@
       this.pixelRatio = typeof opts.pixelRatio === 'number' ? opts.pixelRatio : null;
 
       // Zobrazovací volby pro hráče (platí pro všechny najednou)
-      this.view = Object.assign({ direction: false, sticks: true }, opts.view || {});
+      this.view = Object.assign({ direction: false, sticks: true, paths: true }, opts.view || {});
 
       this.dpr = 1;
       this.cssWidth = 0;
@@ -156,6 +156,8 @@
      * @param {Object} [opts]
      * @param {(obj) => string} [opts.labelFor]   popisek hráče (např. číslo ze sestavy)
      * @param {Iterable<string>} [opts.selectedIds]  id objektů se zvýrazněným výběrem
+     * @param {{from: Array, to: Array}} [opts.movement]  objekty aktuální a další fáze;
+     *   kreslí se z nich šipky pohybu (jen když je zapnuté view.paths)
      */
     render(objects, opts) {
       const o = opts || {};
@@ -178,6 +180,10 @@
 
       this.drawCourt();
 
+      // Dráhy pohybu pod objekty (aby šipka nezakrývala hráče)
+      const movement = this.view.paths && o.movement ? o.movement : null;
+      if (movement) this.drawMovement(movement.from, movement.to);
+
       const sorted = (objects || []).slice().sort(function (a, b) {
         return (LAYER_ORDER[a.type] || 0) - (LAYER_ORDER[b.type] || 0);
       });
@@ -187,6 +193,122 @@
       for (const obj of sorted) {
         if (selected.has(obj.id)) this.drawSelection(obj);
       }
+      if (movement && selected.size === 1) {
+        const id = Array.from(selected)[0];
+        const from = movement.from.find(function (x) { return x.id === id; });
+        const to = movement.to.find(function (x) { return x.id === id; });
+        if (from && to) this.drawBendHandle(from, to);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Dráhy pohybu mezi fázemi
+    // -------------------------------------------------------------------------
+
+    /** Zda se objekt mezi fázemi znatelně pohnul a smí mít šipku a ohnutí. */
+    static _moves(a, b) {
+      return (a.type === 'player' || a.type === 'ball') &&
+        typeof a.x === 'number' && typeof b.x === 'number' &&
+        FB.scene.moveDistance(a, b) >= FB.scene.MIN_MOVE;
+    }
+
+    /**
+     * Šipky z pozic aktuální fáze do pozic další fáze. Hráč: přerušovaná
+     * barevná šipka a průhledný „cíl“; míček: tenká tmavá přerušovaná šipka.
+     * Dráha je oblouk, když má objekt `bend`.
+     */
+    drawMovement(fromObjs, toObjs) {
+      const ctx = this.ctx;
+      const byId = new Map();
+      (toObjs || []).forEach(function (o) { byId.set(o.id, o); });
+
+      (fromObjs || []).forEach(function (a) {
+        const b = byId.get(a.id);
+        if (!b || !CanvasRenderer._moves(a, b)) return;
+        const isBall = a.type === 'ball';
+        const r = a.radius || (isBall ? 0.35 : 0.8);
+        const color = isBall ? '#1f2937' : a.color;
+
+        // Vzorkovaná dráha; končí u okraje cílového kroužku, kam míří hrot šipky
+        const stopAt = r + (isBall ? 0.15 : 0.2);
+        const pts = [];
+        for (let i = 0; i <= 48; i++) {
+          const p = FB.scene.routePoint(a, b, i / 48);
+          pts.push(p);
+          if (Math.hypot(p.x - b.x, p.y - b.y) <= stopAt) break;
+        }
+        if (pts.length < 2) return;
+        const tip = pts[pts.length - 1];
+        const prev = pts[pts.length - 2];
+        const ang = Math.atan2(tip.y - prev.y, tip.x - prev.x);
+        const head = isBall ? 0.5 : 0.85;
+
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // „Cíl“: kde hráč skončí (průhledný kroužek s tečkovaným okrajem)
+        if (!isBall) {
+          ctx.globalAlpha = 0.22;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.globalAlpha = 0.7;
+          ctx.setLineDash([0.25, 0.2]);
+          ctx.lineWidth = 0.08;
+          ctx.strokeStyle = color;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Bílý podklad pod čarou, aby byla šipka čitelná i přes čáry hřiště
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length - 1; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        // dřík končí v základně hrotu, ne na špičce
+        const base = { x: tip.x - Math.cos(ang) * head * 0.8, y: tip.y - Math.sin(ang) * head * 0.8 };
+        ctx.lineTo(base.x, base.y);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.lineWidth = isBall ? 0.16 : 0.3;
+        ctx.setLineDash([]);
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = isBall ? 0.08 : 0.16;
+        ctx.setLineDash(isBall ? [0.22, 0.22] : [0.5, 0.32]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Hrot
+        ctx.translate(tip.x, tip.y);
+        ctx.rotate(ang);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-head, head * 0.36);
+        ctx.lineTo(-head, -head * 0.36);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.95;
+        ctx.fill();
+        ctx.restore();
+      });
+    }
+
+    /** Úchyt na středu dráhy vybraného objektu: tažením se dráha ohne. */
+    drawBendHandle(a, b) {
+      if (!CanvasRenderer._moves(a, b)) return;
+      const ctx = this.ctx;
+      const m = FB.scene.routeMid(a, b);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 0.34, 0, Math.PI * 2);
+      ctx.fillStyle = a.bend ? SELECTION_COLOR : '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 0.1;
+      ctx.strokeStyle = SELECTION_COLOR;
+      ctx.stroke();
+      ctx.restore();
     }
 
     // -------------------------------------------------------------------------

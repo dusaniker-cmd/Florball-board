@@ -196,8 +196,55 @@
       duration: src ? src.duration : DEFAULT_PHASE_DURATION,
       objects: src ? src.objects : [],
     });
+    // Ohnutí dráhy (`bend`) popisuje přechod do NÁSLEDUJÍCÍ fáze. Nová fáze je
+    // vložená za zdrojovou, takže si ohnutí bere s sebou (zachová dráhu do staré
+    // následující fáze) a zdrojová fáze ho ztrácí (přechod na kopii je nulový).
+    if (src) {
+      src.objects.forEach(function (o) { delete o.bend; });
+    }
     scene.phases.splice(srcIndex + 1, 0, phase);
     return phase;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dráha pohybu mezi fázemi
+  //
+  // Objekt v jedné fázi může mít `bend: {x, y}`: bod, kterým prochází jeho dráha
+  // do další fáze v polovině cesty. Dráha je kvadratická Bézierova křivka
+  // A → B a `bend` je její bod pro t = 0,5. Bez `bend` je dráha přímá.
+  // ---------------------------------------------------------------------------
+
+  /** Pod touto vzdáleností (m) se pohyb považuje za žádný: bez šipky a bez ohnutí. */
+  const MIN_MOVE = 0.4;
+
+  function moveDistance(a, b) {
+    return Math.hypot(b.x - a.x, b.y - a.y);
+  }
+
+  /** Řídicí bod křivky. Bez ohnutí střed úsečky A–B (křivka je přímka). */
+  function routeControl(a, b) {
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    if (!a.bend) return { x: mx, y: my };
+    return { x: 2 * a.bend.x - mx, y: 2 * a.bend.y - my };
+  }
+
+  /** Bod na dráze v čase t (0..1) z A do B. */
+  function routePoint(a, b, t) {
+    if (!a.bend || moveDistance(a, b) < MIN_MOVE) {
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    const c = routeControl(a, b);
+    const u = 1 - t;
+    return {
+      x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+      y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
+    };
+  }
+
+  /** Bod, který uživatel chytá pro ohnutí: střed dráhy (t = 0,5). */
+  function routeMid(a, b) {
+    return routePoint(a, b, 0.5);
   }
 
   /** Smaže fázi; poslední zbývající fázi smazat nelze. */
@@ -280,6 +327,7 @@
     } else if (typeof obj.y === 'number') {
       obj.y = flip(obj.y);
     }
+    if (obj.bend) obj.bend.y = flip(obj.bend.y);
     if (typeof obj.rotation === 'number') {
       // úhel θ se při zrcadlení podle vodorovné osy mění na −θ
       let r = -obj.rotation;
@@ -458,6 +506,11 @@
     removeObject: removeObject,
     allObjectIds: allObjectIds,
     mirrorObjectSides: mirrorObjectSides,
+    MIN_MOVE: MIN_MOVE,
+    moveDistance: moveDistance,
+    routeControl: routeControl,
+    routePoint: routePoint,
+    routeMid: routeMid,
     mirrorSceneSides: mirrorSceneSides,
 
     addRosterPlayer: addRosterPlayer,

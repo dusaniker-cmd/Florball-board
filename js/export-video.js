@@ -91,7 +91,14 @@
       width: width,
       height: height,
       draw: function (timeMs) {
-        renderer.render(FB.phases.stateAtTime(scene, timeMs).objects, { labelFor: labelFor });
+        const st = FB.phases.stateAtTime(scene, timeMs);
+        const from = scene.phases[st.phaseIndex];
+        const to = scene.phases[st.phaseIndex + 1];
+        renderer.render(st.objects, {
+          labelFor: labelFor,
+          // šipky pohybu ve videu, když jsou zapnuté (přepínač Dráhy)
+          movement: from && to ? { from: from.objects, to: to.objects } : null,
+        });
       },
     };
   }
